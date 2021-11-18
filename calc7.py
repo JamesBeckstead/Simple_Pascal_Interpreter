@@ -1,13 +1,9 @@
-# AST tree copy from https://ruslanspivak.com/lsbasi-part7/
-# SPI   Simple Pascal Interpreter
+# SPI Simple Pascal Interpreter
 
-from os import execlpe
-
-
+## LEXER ##
 INTEGER, PLUS, MINUS, MUL, DIV, LPAREN, RPAREN, EOF = (
-    'INTEGER', 'PLUS', 'MINUS', 'MUL', 'DIV', '(', ')', 'EOF'
+    'INTEGER', 'PLUS','MINUS', 'MUL', 'DIV', '(', ')', 'EOF'
 )
-
 
 class Token(object):
     def __init__(self, type, value):
@@ -15,12 +11,12 @@ class Token(object):
         self.value = value
 
     def __str__(self):
-        """create string objects
+        """create token objects
         
         ex.
             Token(INTEGER, 2)
-            Token(MUL, '*')
             Token(PLUS, '+')
+            Token(LPAREN, '(')
         """
         return f'Token({self.type}, {repr(self.value)})'
 
@@ -28,47 +24,40 @@ class Token(object):
         return self.__str__()
 
 
-
 class Lexer(object):
     def __init__(self, text):
-        """input string ex. 4 + 5 - 3 * 14"""
         self.text = text
-        # position within the text
+        # position within the input text
         self.pos = 0
         self.current_char = self.text[self.pos]
 
     def error(self):
-        raise Exception('Invalid syntax')
+        raise Exception('Invalid character')
 
     def advance(self):
         self.pos += 1
         if self.pos > len(self.text) - 1:
-            self.current_char = None # end of input string  
+            self.current_char = None # end of input text
         else:
             self.current_char = self.text[self.pos]
 
     def skip_whitespace(self):
         while self.current_char is not None and self.current_char.isspace():
             self.advance()
-        
+
     def integer(self):
-        """return multiple character integer value"""
+        """Return multiple digit integer"""
         result = ''
         while self.current_char is not None and self.current_char.isdigit():
-            result = result + self.current_char
+            result += self.current_char
             self.advance()
         return int(result)
 
     def get_next_token(self):
-        """Lexical analyzer (also known as a scanner or tokenizer)
-        
-        This method breaks the input into token. One token at at a time.
-        """
         while self.current_char is not None:
 
             if self.current_char.isspace():
                 self.skip_whitespace()
-                continue
 
             if self.current_char.isdigit():
                 return Token(INTEGER, self.integer())
@@ -84,7 +73,7 @@ class Lexer(object):
             if self.current_char == '*':
                 self.advance()
                 return Token(MUL, '*')
-
+            
             if self.current_char == '/':
                 self.advance()
                 return Token(DIV, '/')
@@ -98,33 +87,38 @@ class Lexer(object):
                 return Token(RPAREN, ')')
 
             self.error()
-
+        
         return Token(EOF, None)
 
 
 ## PARSER ##
 
-
 class AST(object):
     pass
 
 
+class UnaryOp(AST):
+    def __init__(self, op, expr):
+        self.token = self.op = op
+        self.expr = expr
+
 class BinOp(AST):
+    """create tree/branch structure"""
     def __init__(self, left, op, right):
         self.left = left
         self.token = self.op = op
         self.right = right
-
 
 class Num(AST):
     def __init__(self, token):
         self.token = token
         self.value = token.value
 
+
 class Parser(object):
     def __init__(self, lexer):
         self.lexer = lexer
-        # set current token to first token of the input
+        # set current token
         self.current_token = self.lexer.get_next_token()
 
     def error(self):
@@ -137,9 +131,17 @@ class Parser(object):
             self.error()
 
     def factor(self):
-        """INTEGER | LPAREN expr RPAREN"""
+        """(PLUS | MINUS) expr | INTEGER | LPAREN exp RPAREN"""
         token = self.current_token
-        if token.type == INTEGER:
+        if token.type == PLUS:
+            self.eat(PLUS)
+            node = UnaryOp(token, self.factor())
+            return node
+        elif token.type == MINUS:
+            self.eat(MINUS)
+            node = UnaryOp(token, self.factor())
+            return node
+        elif token.type == INTEGER:
             self.eat(INTEGER)
             return Num(token)
         elif token.type == LPAREN:
@@ -149,7 +151,7 @@ class Parser(object):
             return node
 
     def term(self):
-        """factor((MUL | DIV) factor)*"""
+        """factor((MUL | DIV) term)*"""
         node = self.factor()
 
         while self.current_token.type in (MUL, DIV):
@@ -158,11 +160,10 @@ class Parser(object):
                 self.eat(MUL)
             elif token.type == DIV:
                 self.eat(DIV)
-            
             node = BinOp(left=node, op=token, right=self.factor())
-        
-        return node
 
+        return node
+            
     def expr(self):
         """term((PLUS | MINUS) term)*"""
         node = self.term()
@@ -173,11 +174,10 @@ class Parser(object):
                 self.eat(PLUS)
             elif token.type == MINUS:
                 self.eat(MINUS)
-
             node = BinOp(left=node, op=token, right=self.term())
-        
-        return node
 
+        return node
+    
     def parse(self):
         return self.expr()
 
@@ -185,10 +185,9 @@ class Parser(object):
 
 ## INTERPRETER ##
 
-
 class NodeVisitor(object):
     def visit(self, node):
-        method_name = 'visit_' + type(node).__name__
+        method_name = f'visit_{type(node).__name__}'
         visitor = getattr(self, method_name, self.generic_visit)
         return visitor(node)
 
@@ -196,12 +195,19 @@ class NodeVisitor(object):
         raise Exception(f'No visit_{type(node).__name__} method.')
 
 
-
 class Interpreter(NodeVisitor):
     def __init__(self, parser):
         self.parser = parser
 
+    def visit_UnaryOp(self, node):
+        op = node.op.type
+        if op == PLUS:
+            return +self.visit(node.expr)
+        elif op == MINUS:
+            return -self.visit(node.expr)
+
     def visit_BinOp(self, node):
+        """tranverse the binary tree structure"""
         if node.op.type == PLUS:
             return self.visit(node.left) + self.visit(node.right)
         elif node.op.type == MINUS:
@@ -210,15 +216,13 @@ class Interpreter(NodeVisitor):
             return self.visit(node.left) * self.visit(node.right)
         elif node.op.type == DIV:
             return self.visit(node.left) / self.visit(node.right)
-
+        
     def visit_Num(self, node):
         return node.value
-
 
     def interpret(self):
         tree = self.parser.parse()
         return self.visit(tree)
-            
 
 
 def main():
@@ -229,12 +233,12 @@ def main():
             break
         if not text:
             continue
+
         lexer = Lexer(text)
         parser = Parser(lexer)
         interpreter = Interpreter(parser)
         result = interpreter.interpret()
         print(result)
-
 
 
 if __name__=='__main__':
