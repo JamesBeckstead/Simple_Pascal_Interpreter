@@ -1,0 +1,11 @@
+BEGIN
+
+    BEGIN
+        _number := 2;
+        a := _NumBer;
+        _B := 10 * a + 10 * _NUMBER / 4;
+        c := a - - _b
+    end;
+
+    x := 11;
+END.
