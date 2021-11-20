@@ -1,4 +1,4 @@
-# learning
+# Simple Pascal Interpreter
 
 First lesson:
 	
